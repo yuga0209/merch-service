@@ -1,0 +1,38 @@
+name: Service Principal Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      role:
+        description: 'Role to assign to the Service Principal'
+        required: true
+      scope:
+        description: 'Scope at which the role should be assigned (e.g., subscription or resource group ID)'
+        required: true
+
+jobs:
+  create-and-assign-role:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Create Service Principal
+      id: create_sp
+      run: |
+        output=$(az ad sp create-for-rbac --name "http://GitHubActionsSP-${{ github.run_id }}" --sdk-auth --query "{appId: appId, displayName: displayName, password: password, tenant: tenant}" --output json)
+        echo "Service Principal creation output: $output"
+        echo "::set-output name=SP_DETAILS::$output"
+
+    - name: Assign Role
+      run: |
+        sp_details=${{ steps.create_sp.outputs.SP_DETAILS }}
+        appId=$(echo $sp_details | jq -r '.appId')
+        az role assignment create --assignee $appId --role "${{ github.event.inputs.role }}" --scope "${{ github.event.inputs.scope }}"
+        echo "Role '${{ github.event.inputs.role }}' assigned to Service Principal with appId: $appId"
+
+    - name: Output Service Principal Details
+      run: |
+        echo "Service Principal Details: ${{ steps.create_sp.outputs.SP_DETAILS }}"
